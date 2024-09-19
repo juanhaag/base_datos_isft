@@ -1,5 +1,6 @@
 const express = require('express');
 const { Sequelize, DataTypes } = require('sequelize');
+const mysql = require('mysql2/promise');
 const app = express();
 const port = 3000;
 require('dotenv').config();
@@ -7,6 +8,14 @@ require('dotenv').config();
 const sequelize = new Sequelize(process.env.DB_NAME, process.env.DB_USER, process.env.DB_PASSWORD, {
     host: process.env.DB_HOST,
     dialect: 'mysql',
+    port: process.env.DB_PORT
+});
+
+const pool = mysql.createPool({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
     port: process.env.DB_PORT
 });
 
@@ -27,7 +36,8 @@ sequelize.sync();
 
 app.use(express.json());
 
-app.post('/users', async (req, res) => {
+// Endpoints usando Sequelize (ORM)
+app.post('/orm/users', async (req, res) => {
     try {
         const user = await User.create(req.body);
         res.status(201).json(user);
@@ -36,7 +46,7 @@ app.post('/users', async (req, res) => {
     }
 });
 
-app.get('/users', async (req, res) => {
+app.get('/orm/users', async (req, res) => {
     try {
         const users = await User.findAll();
         res.json(users);
@@ -45,7 +55,7 @@ app.get('/users', async (req, res) => {
     }
 });
 
-app.get('/users/:id', async (req, res) => {
+app.get('/orm/users/:id', async (req, res) => {
     try {
         const user = await User.findByPk(req.params.id);
         if (user) {
@@ -58,7 +68,7 @@ app.get('/users/:id', async (req, res) => {
     }
 });
 
-app.put('/users/:id', async (req, res) => {
+app.put('/orm/users/:id', async (req, res) => {
     try {
         const user = await User.findByPk(req.params.id);
         if (user) {
@@ -72,7 +82,7 @@ app.put('/users/:id', async (req, res) => {
     }
 });
 
-app.delete('/users/:id', async (req, res) => {
+app.delete('/orm/users/:id', async (req, res) => {
     try {
         const user = await User.findByPk(req.params.id);
         if (user) {
@@ -86,18 +96,64 @@ app.delete('/users/:id', async (req, res) => {
     }
 });
 
-
-
-/* DELIMITER //
-CREATE PROCEDURE GetAllUsers()
-BEGIN
-    SELECT * FROM Users;
-END //
-DELIMITER ; */
-app.get('/stored-procedure/users', async (req, res) => {
+// Endpoints usando Procedimientos Almacenados (sin ORM)
+app.post('/sp/users', async (req, res) => {
+    const { name, email } = req.body;
     try {
-        const [results] = await sequelize.query('CALL GetAllUsers()');
-        res.json(results);
+        const [results] = await pool.query('CALL CreateUser(?, ?)', [name, email]);
+        res.status(201).json(results);
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+});
+
+app.get('/sp/users', async (req, res) => {
+    try {
+        const [results] = await pool.query('CALL GetAllUsers()');
+        res.json(results[0]);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get('/sp/users/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const [results] = await pool.query('CALL GetUserById(?)', [id]);
+        if (results[0].length > 0) {
+            res.json(results[0][0]);
+        } else {
+            res.status(404).json({ message: 'Usuario no encontrado' });
+        }
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.put('/sp/users/:id', async (req, res) => {
+    const { id } = req.params;
+    const { name, email } = req.body;
+    try {
+        const [results] = await pool.query('CALL UpdateUser(?, ?, ?)', [id, name, email]);
+        if (results.affectedRows > 0) {
+            res.json({ message: 'Usuario actualizado' });
+        } else {
+            res.status(404).json({ message: 'Usuario no encontrado' });
+        }
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+});
+
+app.delete('/sp/users/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const [results] = await pool.query('CALL DeleteUser(?)', [id]);
+        if (results.affectedRows > 0) {
+            res.json({ message: 'Usuario eliminado' });
+        } else {
+            res.status(404).json({ message: 'Usuario no encontrado' });
+        }
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
