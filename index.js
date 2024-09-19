@@ -96,7 +96,7 @@ END //
 DELIMITER ; */
 app.get('/stored-procedure/users', async (req, res) => {
     try {
-        const [results, metadata] = await sequelize.query('CALL GetAllUsers()');
+        const [results] = await sequelize.query('CALL GetAllUsers()');
         res.json(results);
     } catch (error) {
         res.status(500).json({ error: error.message });
